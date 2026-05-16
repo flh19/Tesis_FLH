@@ -2,6 +2,9 @@
 """
 FastQC_post_hortega.py
 
+#Path:
+/mnt/zonahpc/home/UGD/flara/FLH_thesis_20250507/VCamplicons/bioinfo/Hortega_study/trim_files/outQC/postQC
+
 Boxplots "Per base sequence quality" ENTRE MUESTRAS
 AGRUPADOS EN VENTANAS DE 5 bp
 """
