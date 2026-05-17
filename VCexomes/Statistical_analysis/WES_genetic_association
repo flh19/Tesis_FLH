@@ -1,10 +1,103 @@
-plink --bfile input_prefix --indep-pairwise 250 50 0.9 --out output_prefix
+###### Whole-Exome Sequencing Association
 
-plink --bfile pruned_input_prefix --pca 10 header tabs --out output_prefix
+## Overview
 
-regenie --step 1 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol binary_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
---bt --bsize 1000 --lowmem --out output_prefix
+This repository contains the complete workflow used for common and rare variant association analyses in whole-exome sequencing (WES) data using PLINK and REGENIE.
 
+The pipeline includes:
+1. Linkage disequilibrium (LD) pruning.
+2. Principal Component Analysis (PCA).
+3. REGENIE Step 1 whole-genome regression.
+4. Common variant association analyses. Association analyses under additive, dominant, and recessive inheritance models.
+5. Multiple testing correction across inheritance models.
+6. Rare variant gene-based analyses.
+  - GENE_P framework analyses for high- and moderate-impact variants.
+  - SKAT-O analyses for low-impact and modifier variants.
+
+The commands are provided in a generalized format to facilitate reproducibility and adaptation to independent datasets.
+
+###################################################################################################################################################################################
+
+# Software Requirements
+
+## PLINK
+Used for handling genotype data and generating binary genotype files.
+https://www.cog-genomics.org/plink/
+
+## REGENIE
+Used for single-variant and gene-based association analyses.
+https://rgcgithub.github.io/regenie/
+
+## Python Dependencies
+Required Python packages:
+```bash
+pip install pandas numpy statsmodels
+
+###################################################################################################################################################################################
+
+1. Population Structure Analysis
+# Population stratification was assessed using linkage disequilibrium (LD)-pruned variants followed by Principal Component Analysis (PCA).
+
+1.1 LD Pruning
+# LD pruning was performed to obtain a subset of approximately independent variants suitable for ancestry inference.
+plink \
+  --bfile input_prefix \
+  --indep-pairwise 250 50 0.9 \
+  --out output_prefix
+
+# Description of Parameters
+--bfile                         Prefix of PLINK binary genotype files.
+--indep-pairwise 250 50 0.9	    Performs LD pruning using a 250-variant window, shifting by 50 variants, with an r2 threshold of 0.9.
+--out	                          Prefix for output files.
+
+# Main Output Files
+output_prefix.prune.in
+output_prefix.prune.out
+
+1.2 Principal Component Analysis (PCA)
+# Principal component analysis was performed using the LD-pruned variants in order to infer population structure and generate ancestry covariates.
+plink \
+  --bfile pruned_input_prefix \
+  --pca 10 header tabs \
+  --out output_prefix
+
+# Description of Parameters
+--pca 10    Computes the first 10 principal components.
+header	    Adds column names to the output file.
+tabs	      Produces tab-delimited output files.
+
+# Main Output File
+output_prefix.eigenvec
+
+# The resulting principal components (PC1-PC10) were subsequently included as covariates in downstream association analyses.
+
+###################################################################################################################################################################################
+
+2. REGENIE Step 1: Whole-Genome Regression
+
+# REGENIE Step 1 was used to generate Leave-One-Chromosome-Out (LOCO) predictions for downstream Step 2 association analyses.
+
+# The Step 1 model accounts for:
+- Polygenic background.
+- Relatedness.
+- Population structure.
+
+2.1 Binary Phenotype Step 1 Analysis
+# Used for dichotomous phenotypes such as disease status.
+regenie \
+  --step 1 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol binary_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --bt \
+  --bsize 1000 \
+  --lowmem \
+  --out output_prefix
+
+2.2 Quantitative Phenotype Step 1 Analysis
+# Used for continuous quantitative traits.
 regenie \
   --step 1 \
   --bed input_prefix \
@@ -17,26 +110,58 @@ regenie \
   --lowmem \
   --out output_prefix
 
+2.3 Quantitative Phenotype Step 1 Analysis with Sample Exclusion
+# Used when treated individuals or specific samples needed to be excluded before model fitting.
 regenie \
   --step 1 \
   --bed input_prefix \
   --phenoFile phenotype_file.txt \
   --phenoCol quantitative_trait \
   --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
   --qt \
   --remove samples_to_exclude.txt \
   --bsize 1000 \
   --lowmem \
   --out output_prefix
 
+# Description of Parameters
+--step 1        Executes REGENIE Step 1 whole-genome regression.
+--bed	          Prefix of PLINK binary genotype files.
+--phenoFile	    Phenotype file.
+--phenoCol	    Phenotype column to analyze.
+--covarFile	    Covariate file.
+--covarCol	    Covariates included in the model.
+--bt	          Binary trait analysis.
+--qt            Quantitative trait analysis using linear regression.
+--remove        Removes samples listed in the specified file before association testing.
+--bsize	        Block size.
+--lowmem        Reduces memory usage during computation.
+--out	          Prefix for output files.
+
+###################################################################################################################################################################################
+
+3. Common Variant Association Analysis
+
+# Single-variant association analyses were performed using REGENIE Step 2. Analyses were conducted under:
+Additive inheritance models.
+Dominant inheritance models.
+Recessive inheritance models.
+
+# The inheritance model is specified using the --test parameter.
+Genetic         Model	Parameter
+Additive	      --test additive
+Dominant	      --test dominant
+Recessive	      --test recessive
+
+3.1 Binary Phenotype Association Analysis (Logistic regression):
 regenie \
   --step 2 \
   --bed input_prefix \
   --phenoFile phenotype_file.txt \
   --phenoCol binary_trait \
   --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
   --bt \
   --spa \
   --pred step1_predictions.list \
@@ -45,6 +170,7 @@ regenie \
   --test additive \
   --out output_prefix
 
+3.2 Quantitative Phenotype Association Analysis (Linear regression):
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -59,6 +185,7 @@ regenie \
   --test additive \
   --out output_prefix
 
+3.3 Quantitative Phenotype Association Analysis with Sample Exclusion (Linear regression):
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -74,9 +201,38 @@ regenie \
   --test additive \
   --out output_prefix
 
-#Corrección de los tres modelos
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# Description of Parameters
+--step 2	        Performs REGENIE Step 2 association testing.
+--bed	            Prefix of PLINK binary genotype files.
+--phenoFile	      Phenotype file.
+--phenoCol	      Phenotype column to analyze.
+--covarFile	      Covariate file.
+--covarCol	      Covariates included in the model.
+--bt	            Binary trait analysis.
+--qt              Quantitative trait analysis using linear regression.
+--spa	Applies     Saddlepoint Approximation correction for binary traits.
+--pred	          LOCO prediction file generated during Step 1.
+--test	          Specifies the inheritance model used for association testing.
+--remove          Removes samples listed in the specified file before association testing.
+--htp	Phenotype   label used in outputs.
+--bsize	          Block size.
+--lowmem          Reduces memory usage during computation.
+--out	            Prefix for output files.
+
+###################################################################################################################################################################################
+
+4. Multiple Testing Correction Across Genetic Models
+
+# The following Python script was used to integrate additive, dominant, and recessive association results into a unified table and perform global Bonferroni correction.
+
+# The script:
+Reads association results from the three inheritance models.
+Identifies the best-performing model for each variant.
+Computes combined p-values.
+Applies global Bonferroni correction.
+Generates a final summary table.
+
+---
 
 import argparse
 import pandas as pd
@@ -183,14 +339,28 @@ def main():
 if __name__ == "__main__":
     main()
 
-#Analisis para variantes raras - impacto alto y moderado
+---
+
+This procedure allows consistent comparison across multiple inheritance models while controlling the family-wise error rate.
+
+###################################################################################################################################################################################
+
+5. Rare Variant Association Analysis Using High- and Moderate-Impact Masks
+
+# Rare variant aggregation analyses were performed using functional masks restricted to high- and moderate-impact variants.
+# These analyses included the GENE_P analysis using three functional masks: 
+- High-impact variants
+- High-impact variants + deleterious missense variants
+- High-impact variants + missense variants
+
+5.1 Binary Phenotype Gene-Based Analysis
 regenie \
   --step 2 \
   --bed input_prefix \
   --phenoFile phenotype_file.txt \
   --phenoCol binary_trait \
   --covarFile covariates_file.txt \
-  --covarCol list_covariates1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
   --bt \
   --firth \
   --approx \
@@ -205,6 +375,7 @@ regenie \
   --check-burden-files \
   --out output_prefix
 
+5.2 Quantitative Phenotype Gene-Based Analysis
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -225,6 +396,7 @@ regenie \
   --check-burden-files \
   --out output_prefix
 
+5.3 Quantitative Phenotype Gene-Based Analysis with Sample Exclusion
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -246,7 +418,42 @@ regenie \
   --check-burden-files \
   --out output_prefix
 
-#Analisis rare variants - low and modifier impact
+# Description of Parameters
+--step 2	              Performs REGENIE Step 2 association testing using the LOCO predictions generated in Step 1.
+--bed	                  Prefix of PLINK binary genotype files (.bed, .bim, .fam).
+--phenoFile	            File containing phenotype information for all samples.
+--phenoCol	            Phenotype column to analyze from the phenotype file.
+--covarFile	            File containing covariates used in the association model.
+--covarCol	            Covariates included in the regression model (e.g., age, sex, PCs).
+--bt	                  Specifies a binary trait analysis using logistic regression.
+--qt	                  Specifies a quantitative trait analysis using linear regression.
+--firth	                Applies Firth logistic regression correction to handle case–control imbalance and rare variants.
+--approx	              Uses approximate Firth correction to reduce computational burden.
+--pred	                File containing LOCO predictions generated in REGENIE Step 1.
+--set-list	            File defining variant sets (typically genes) used for gene-based testing.
+--mask-def	            File defining variant masks according to functional annotations and allele frequency thresholds.
+--anno-file	            Annotation file assigning functional consequences to variants (e.g., missense, LoF).
+--vc-tests	            Specifies variance-component gene-based tests to perform (e.g., SKAT-O, ACATO).
+--rgc-gene-p	          Runs the GENE_P framework, combining burden and variance-component tests across masks.
+--joint                 acat,sbat	Performs joint testing across masks using ACAT and SBAT aggregation methods.
+--bsize	                Block size used during Step 2 computations.
+--remove	              Removes samples listed in the specified file before association testing.
+--write-mask-snplist	  Outputs the list of variants included in each mask.
+--check-burden-files	  Checks burden mask files for consistency before running association tests.
+--out	                  Prefix for output files generated by REGENIE.
+
+###################################################################################################################################################################################
+
+6. Rare Variant Association Analysis Using Low-Impact and Modifier Masks
+
+# Genetic analysis using the SKAT-O statistical method for low-impact and modifier variants.
+# These analyses focused on: 
+- non-canonical splicing
+- UTR regions
+- non-coding
+- synonymous 
+
+6.1 Binary Phenotype Gene-Based Analysis
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -267,6 +474,7 @@ regenie \
   --check-burden-files \
   --out output_prefix
 
+6.2 Quantitative Phenotype Gene-Based Analysis
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -285,6 +493,7 @@ regenie \
   --check-burden-files \
   --out output_prefix
 
+6.3 Quantitative Phenotype Gene-Based Analysis with Sample Exclusion
 regenie \
   --step 2 \
   --bed input_prefix \
@@ -303,3 +512,40 @@ regenie \
   --write-mask-snplist \
   --check-burden-files \
   --out output_prefix
+
+# Description of Parameters
+--step 2	                Performs REGENIE Step 2 association testing using the LOCO predictions generated in Step 1.
+--bed	                    Prefix of PLINK binary genotype files (.bed, .bim, .fam).
+--phenoFile	              File containing phenotype information for all samples.
+--phenoCol	              Phenotype column to analyze from the phenotype file.
+--covarFile	              File containing covariates used in the association model.
+--covarCol	              Covariates included in the regression model (e.g., age, sex, principal components).
+--bt	                    Specifies a binary trait analysis using logistic regression.
+--qt	                    Specifies a quantitative trait analysis using linear regression.
+--firth	                  Applies Firth logistic regression correction to account for case–control imbalance and rare variants.
+--approx	                Uses the approximate Firth correction to improve computational efficiency.
+--pred	                  File containing LOCO predictions generated during REGENIE Step 1.
+--set-list	              File defining the variant sets (typically genes) used for gene-based testing.
+--mask-def	              File defining variant masks according to functional annotations and allele frequency thresholds.
+--anno-file	              Annotation file specifying the functional consequence of each variant.
+--vc-tests skato	        Performs the SKAT-O variance-component gene-based association test.
+--bsize	                  Block size used during Step 2 computations.
+--remove	                Removes samples listed in the specified file before association testing.
+--write-mask-snplist	    Outputs the list of variants included in each burden mask.
+--check-burden-files	    Checks burden mask files for formatting and consistency before analysis.
+--out	                    Prefix for output files generated by REGENIE.
+
+###################################################################################################################################################################################
+
+#Notes
+
+All analyses were performed using PLINK binary genotype files.
+Principal components were included as covariates to account for population stratification.
+REGENIE Step 1 LOCO predictions were incorporated into all Step 2 association analyses.
+Common variant analyses were conducted under additive, dominant, and recessive inheritance models using logistic regression for binary traits and linear regression for quantitative traits.
+Rare variant analyses were performed using gene-based aggregation tests.
+High- and moderate-impact variants were analyzed using the GENE_P framework.
+Low-impact and modifier variants were analyzed using the SKAT-O method.
+Binary trait analyses used SPA correction for common variants and Firth correction for rare variant analyses to account for case–control imbalance and sparse data.
+Quantitative trait analyses excluding treated individuals were performed to minimize treatment-related confounding.
+Multiple testing correction across inheritance models was performed using Bonferroni adjustment.
