@@ -6,13 +6,6 @@ Combined QQ Plot Generator for GWAS Association Results
 This script generates a combined Quantile-Quantile (QQ) plot
 for multiple phenotypes using REGENIE association results.
 
-The workflow:
-1. Loads p-values from GWAS result files.
-2. Cleans invalid or missing values.
-3. Computes the genomic inflation factor (Lambda GC).
-4. Generates observed vs expected -log10(p) distributions.
-5. Produces a publication-quality QQ plot comparing all phenotypes.
-
 """
 
 # ============================================================
