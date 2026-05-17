@@ -1,0 +1,305 @@
+plink --bfile input_prefix --indep-pairwise 250 50 0.9 --out output_prefix
+
+plink --bfile pruned_input_prefix --pca 10 header tabs --out output_prefix
+
+regenie --step 1 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol binary_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+--bt --bsize 1000 --lowmem --out output_prefix
+
+regenie \
+  --step 1 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --bsize 1000 \
+  --lowmem \
+  --out output_prefix
+
+regenie \
+  --step 1 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --remove samples_to_exclude.txt \
+  --bsize 1000 \
+  --lowmem \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol binary_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --bt \
+  --spa \
+  --pred step1_predictions.list \
+  --bsize 1000 \
+  --htp binary_trait \
+  --test additive \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --pred step1_predictions.list \
+  --bsize 1000 \
+  --htp quantitative_trait \
+  --test additive \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --pred step1_predictions.list \
+  --remove samples_to_exclude.txt \
+  --bsize 1000 \
+  --htp quantitative_trait \
+  --test additive \
+  --out output_prefix
+
+#Corrección de los tres modelos
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import argparse
+import pandas as pd
+import numpy as np
+
+def _read_model(path: str, tag: str) -> pd.DataFrame:
+    """
+    Lee un TSV con columnas: Name, Chr, Pos, Ref, Alt, Pval
+    Devuelve: Name, Chr, Pos, Ref, Alt, Pval_<TAG>
+    """
+    df = pd.read_csv(path, sep="\t", dtype=str, low_memory=False)
+    need = ["Name", "Chr", "Pos", "Ref", "Alt", "Pval"]
+    miss = [c for c in need if c not in df.columns]
+    if miss:
+        raise ValueError(f"En {path} faltan columnas: {miss}")
+
+    out = df[["Name", "Chr", "Pos", "Ref", "Alt", "Pval"]].copy()
+    out = out.rename(columns={"Pval": f"Pval_{tag}"})
+    return out
+
+def _coalesce(df: pd.DataFrame, base: str) -> pd.Series:
+    cols = [c for c in df.columns if c == base or c.startswith(base + "_")]
+    if base in cols:
+        cols = [base] + [c for c in cols if c != base]
+
+    s = pd.Series([np.nan] * len(df), index=df.index, dtype="object")
+    for c in cols:
+        tmp = df[c].replace("", np.nan)
+        s = s.combine_first(tmp)
+    return s
+
+def unify_and_correct(add_path: str, dom_path: str, rec_path: str) -> pd.DataFrame:
+    """
+    Opción 1:
+      1) p_min = min(Pval_ADD, Pval_DOM, Pval_REC) (NA/ausente -> 1)
+      2) p_comb = min(1, 3*p_min)
+      3) Bonferroni global por N variantes: p_bonf = min(1, p_comb * N)
+    """
+    add = _read_model(add_path, "ADD")
+    dom = _read_model(dom_path, "DOM")
+    rec = _read_model(rec_path, "REC")
+
+    m = pd.merge(add, dom, on="Name", how="outer", suffixes=("", "_DOMMETA"))
+    m = pd.merge(m, rec, on="Name", how="outer", suffixes=("", "_RECMETA"))
+
+    # Coalesce metadatos (Chr/Pos/Ref/Alt) desde cualquiera de los archivos
+    for base in ["Chr", "Pos", "Ref", "Alt"]:
+        rel = [c for c in m.columns if c == base or c.startswith(base + "_")]
+        if len(rel) > 1:
+            m[base] = _coalesce(m, base)
+            for c in rel:
+                if c != base:
+                    m.drop(columns=c, inplace=True)
+
+    # Pvals numéricos; NA/ausente -> 1
+    for c in ["Pval_ADD", "Pval_DOM", "Pval_REC"]:
+        if c not in m.columns:
+            m[c] = np.nan
+        m[c] = pd.to_numeric(m[c], errors="coerce").fillna(1.0)
+
+    # p_min y modelo ganador
+    pv = m[["Pval_ADD", "Pval_DOM", "Pval_REC"]].to_numpy()
+    m["p_min"] = pv.min(axis=1)
+
+    idx = pv.argmin(axis=1)  # empates: ADD > DOM > REC (por orden de columnas)
+    m["best_model"] = pd.Series(idx).map({0: "ADD", 1: "DOM", 2: "REC"}).to_numpy()
+
+    # p_comb = min(1, 3*p_min)
+    m["p_comb"] = np.minimum(1.0, 3.0 * m["p_min"].to_numpy())
+
+    # N = número de variantes en tu tabla final (unión)
+    N = int(m.shape[0])
+
+    # p_bonf = min(1, p_comb * N)
+    m["p_bonf"] = np.minimum(1.0, m["p_comb"].to_numpy() * N)
+
+    # Guardamos N y umbral como “constantes” imprimibles desde fuera si quieres
+    m.attrs["N_variantes"] = N
+    m.attrs["bonf_threshold"] = 0.05 / N
+
+    return m[["Name", "Chr", "Pos", "Ref", "Alt",
+              "Pval_ADD", "Pval_DOM", "Pval_REC",
+              "p_min", "best_model", "p_comb", "p_bonf"]]
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Unifica p-valores ADD/DOM/REC, calcula p_comb (3x) y p_bonf global, e imprime umbral Bonferroni."
+    )
+    ap.add_argument("--add", required=True, help="TSV modelo aditivo")
+    ap.add_argument("--dom", required=True, help="TSV modelo dominante")
+    ap.add_argument("--rec", required=True, help="TSV modelo recesivo")
+    ap.add_argument("--out", required=True, help="Salida TSV unificada con p_comb y p_bonf")
+    args = ap.parse_args()
+
+    df = unify_and_correct(args.add, args.dom, args.rec)
+    df.to_csv(args.out, sep="\t", index=False)
+
+    N = df.attrs.get("N_variantes", df.shape[0])
+    thr = df.attrs.get("bonf_threshold", 0.05 / N)
+
+    print(f"OK: escrito {args.out} con N={N} variantes.")
+    print(f"Umbral Bonferroni (0.05/N) = {thr:.6e}")
+
+if __name__ == "__main__":
+    main()
+
+#Analisis para variantes raras - impacto alto y moderado
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol binary_trait \
+  --covarFile covariates_file.txt \
+  --covarCol list_covariates1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --bt \
+  --firth \
+  --approx \
+  --pred step1_predictions.list \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato,acato-full \
+  --rgc-gene-p \
+  --bsize 1000 \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --pred step1_predictions.list \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato,acato-full \
+  --rgc-gene-p \
+  --joint acat,sbat \
+  --bsize 1000 \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --pred step1_predictions.list \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato,acato-full \
+  --rgc-gene-p \
+  --joint acat,sbat \
+  --bsize 1000 \
+  --remove samples_to_exclude.txt \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
+
+#Analisis rare variants - low and modifier impact
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol binary_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --bt \
+  --firth \
+  --approx \
+  --pred step1_predictions.list \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --pred step1_predictions.list \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
+
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8,PC9,PC10 \
+  --qt \
+  --pred step1_predictions.list \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --remove samples_to_exclude.txt \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
