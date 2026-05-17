@@ -1,212 +1,199 @@
+# Rare and Common Variant Association Analysis Pipeline
 
+## Overview
 
+This repository contains the commands and scripts used for common and rare variant association analyses performed using \_\_PLINK\_\_ and \_\_REGENIE\_\_. The workflow includes:
 
+1. Conversion of VCF files into PLINK binary format.
+2. Calculation of allele frequencies.
+3. Single-variant association analyses for:
+   - Binary phenotypes.
+   - Quantitative phenotypes.
+4. Gene-based rare variant association analyses using SKAT-O.
+5. Multiple testing correction using Bonferroni and False Discovery Rate (FDR).
 
+The commands are provided in a generalized format to facilitate reproducibility and adaptation to other datasets.
 
+###################################################################################################################################################################################
 
+# Software Requirements
 
+## PLINK
+Used for handling genotype data and generating binary genotype files.
+https://www.cog-genomics.org/plink/
 
+## REGENIE
+Used for single-variant and gene-based association analyses.
+https://rgcgithub.github.io/regenie/
 
+## Python Dependencies
+Required Python packages:
+```bash
+pip install pandas numpy statsmodels
 
+###################################################################################################################################################################################
 
+1. Conversion from VCF to PLINK Binary Format
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#VCF genotype files were converted into PLINK binary format (.bed, .bim, .fam) using the following command:
 plink --vcf input.vcf.gz --double-id --make-bed --out output_prefix
 
+#Description of Parameters:
+--vcf	Input compressed VCF file.
+--double-id	Uses sample IDs as both family and individual IDs.
+--make-bed	Generates PLINK binary files.
+--out	Prefix for output files.
+
+#Output Files:
+output_prefix.bed
+output_prefix.bim
+output_prefix.fam
+
+###################################################################################################################################################################################
+
+2. Allele Frequency Calculation
+
+Allele frequencies were calculated from PLINK binary files using:
 plink --bfile input_prefix --freq --out output_prefix
 
-#Variantes comunes - modelo aditivo
-#Dicotómicas
-regenie \
-  --step 2 \
-  --bed input_prefix \
-  --phenoFile phenotype_file.txt \
-  --phenoCol phenotype \
-  --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3 \
-  --bt \
-  --firth \
-  --ignore-pred \
-  --bsize 1000 \
-  --htp phenotype \
-  --out output_prefix
+#Description of Parameters:
+--bfile	Prefix of PLINK binary input files.
+--freq	Computes allele frequencies.
+--out	Prefix for output files.
 
-  #Cuantitativas sin exclusión de muestras por tratamiento
-  regenie \
-  --step 2 \
-  --bed input_prefix \
-  --phenoFile phenotype_file.txt \
-  --phenoCol quantitative_trait \
-  --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2 \
-  --qt \
-  --ignore-pred \
-  --bsize 1000 \
-  --htp quantitative_trait \
-  --out output_prefix
+#Main Output:
+output_prefix.frq
 
-  #Cuantitativas sin exclusión de muestras por tratamiento
-  regenie \
-  --step 2 \
-  --bed input_prefix \
-  --phenoFile phenotype_file.txt \
-  --phenoCol quantitative_trait \
-  --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3 \
-  --qt \
-  --ignore-pred \
-  --remove samples_to_exclude.txt \
-  --bsize 1000 \
-  --htp quantitative_trait \
-  --out output_prefix
+###################################################################################################################################################################################
 
-############# Script para corregir los archivos de regenie (variantes comunes) y obtener el valor FDR #############
+3. Common Variant Association Analysis
+
+Single-variant association analyses were performed using REGENIE Step 2.
+
+#Binary Phenotype Analysis. Used for dichotomous traits such as disease status.
+regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol phenotype --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --bt --firth \
+--ignore-pred --bsize 1000 --htp phenotype --out output_prefix
+
+#Quantitative Phenotype Analysis. Used for continuous quantitative traits.
+regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2 --qt \
+--ignore-pred --bsize 1000 --htp quantitative_trait --out output_prefix
+
+#Quantitative Phenotype Analysis with Sample Exclusion. Used when treated individuals or specific samples needed to be excluded.
+regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
+--ignore-pred --remove samples_to_exclude.txt --bsize 1000 --htp quantitative_trait --out output_prefix
+
+Description of Parameters
+--step 2	Performs REGENIE Step 2 association testing.
+--bed	Prefix of PLINK binary genotype files.
+--phenoFile	Phenotype file.
+--phenoCol	Phenotype column to analyze.
+--covarFile	Covariate file.
+--covarCol	Covariates included in the model.
+--bt	Binary trait analysis.
+--qt  Quantitative trait analysis using linear regression.
+--firth	Applies Firth logistic regression correction.
+--ignore-pred	Runs the analysis without LOCO predictions.
+--remove  Removes samples listed in the specified file before association testing.
+--bsize	Block size.
+--htp	Phenotype label used in outputs.
+--out	Prefix for output files.
+
+###################################################################################################################################################################################
+
+4. Multiple Testing Correction for Common Variant Analyses
+
+The following Python script was used to calculate Bonferroni- and FDR-corrected p-values from REGENIE output files.
+
+---
+
 import pandas as pd
 import glob
 from statsmodels.stats.multitest import multipletests
 
-# Función para corregir p-valores por Bonferroni y FDR
+# Function to calculate Bonferroni and FDR corrections
 def correct_pvalues(df):
-    p_values = df['Pval'].values  # Extrae los p-valores de la columna 'Pval'
-    
-    # Corregir por Bonferroni
-    bonferroni_threshold = 0.05 / len(p_values)  # Umbral Bonferroni
+    p_values = df['Pval'].values
+
+    # Bonferroni correction
+    bonferroni_threshold = 0.05 / len(p_values)
     bonferroni_pvalues = multipletests(p_values, method='bonferroni')[1]
-    
-    # Corregir por FDR (Benjamini-Hochberg)
+
+    # FDR correction (Benjamini-Hochberg)
     fdr_pvalues = multipletests(p_values, method='fdr_bh')[1]
-    
-    # Añadir los resultados al DataFrame
+
+    # Add corrected values to the DataFrame
     df['Bonferroni_Pval'] = bonferroni_pvalues
     df['FDR_Pval'] = fdr_pvalues
-    
+
     return df, bonferroni_threshold
 
-# Función para procesar archivos y calcular p-valores corregidos
+# Function to process REGENIE output files
 def process_files(file_pattern):
     files = glob.glob(file_pattern)
-    
-    for file in files:
-        print(f"Procesando archivo: {file}")
-        
-        # Leer el archivo
-        df = pd.read_csv(file, sep="\t")
-        
-        # Corregir p-valores y obtener umbral Bonferroni
-        df_corrected, bonferroni_threshold = correct_pvalues(df)
-        
-        # Mostrar umbral Bonferroni
-        print(f"Umbral Bonferroni para este archivo: {bonferroni_threshold}")
-        
-        # Mostrar algunas filas del DataFrame corregido para validar
-        print(df_corrected[['Name', 'Pval', 'Bonferroni_Pval', 'FDR_Pval']].head())
 
-        # Guardar el archivo con los p-valores corregidos
+    for file in files:
+        print(f"Processing file: {file}")
+
+        # Read file
+        df = pd.read_csv(file, sep="\t")
+
+        # Apply corrections
+        df_corrected, bonferroni_threshold = correct_pvalues(df)
+
+        # Print Bonferroni threshold
+        print(f"Bonferroni threshold: {bonferroni_threshold}")
+
+        # Save corrected file
         output_file = file.replace(".regenie", "_corrected.regenie")
         df_corrected.to_csv(output_file, sep="\t", index=False)
-        print(f"Archivo corregido guardado en: {output_file}\n")
 
-# Llamar a la función con el patrón de archivo
+        print(f"Corrected file saved to: {output_file}\n")
+
+# Process all REGENIE files
 process_files('*.regenie')
 
-##########################################################################################################################
+---
 
-#Variantes raras
-#Fenotipos dicotómicos
-regenie \
-  --step 2 \
-  --bed input_prefix \
-  --phenoFile phenotype_file.txt \
-  --phenoCol binary_trait \
-  --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3,covariate4 \
-  --bt \
-  --firth \
-  --approx \
-  --ignore-pred \
-  --set-list set_file.txt \
-  --mask-def mask_file.txt \
-  --anno-file annotation_file.txt \
-  --vc-tests skato \
-  --bsize 1000 \
-  --extract variants_to_include.txt \
-  --write-mask-snplist \
-  --minMAC 1 \
-  --check-burden-files \
-  --out output_prefix
+###################################################################################################################################################################################
 
-#Fenotipos cuantitativos sin exclusión de tratamiento
-regenie \
-  --step 2 \
-  --bed input_prefix \
-  --phenoFile phenotype_file.txt \
-  --phenoCol quantitative_trait \
-  --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3 \
-  --qt \
-  --ignore-pred \
-  --set-list set_file.txt \
-  --mask-def mask_file.txt \
-  --anno-file annotation_file.txt \
-  --vc-tests skato \
-  --bsize 1000 \
-  --extract variants_to_include.txt \
-  --write-mask-snplist \
-  --minMAC 1 \
-  --check-burden-files \
-  --out output_prefix
+5. Rare Variant Gene-Based Association Analysis
 
-  #Fenotipos cuantitativos con exclusión de muestras por tratamiento
-  regenie \
-  --step 2 \
-  --bed input_prefix \
-  --phenoFile phenotype_file.txt \
-  --phenoCol quantitative_trait \
-  --covarFile covariates_file.txt \
-  --covarCol covariate1,covariate2,covariate3 \
-  --qt \
-  --ignore-pred \
-  --set-list set_file.txt \
-  --mask-def mask_file.txt \
-  --anno-file annotation_file.txt \
-  --vc-tests skato \
-  --bsize 1000 \
-  --extract variants_to_include.txt \
-  --remove samples_to_exclude.txt \
-  --write-mask-snplist \
-  --check-burden-files \
-  --out output_prefix
+Rare variant association analyses were performed using REGENIE gene-based tests with the SKAT-O framework.
 
+Binary Phenotype Gene-Based Analysis
+regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol binary_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3,covariate4 \
+--bt --firth --approx --ignore-pred --set-list set_file.txt --mask-def mask_file.txt --anno-file annotation_file.txt --vc-tests skato --bsize 1000 --extract variants_to_include.txt \
+--write-mask-snplist --minMAC 1 --check-burden-files --out output_prefix
 
-########## Script para corregir los archivos de regenie (variantes raras) y obtener el valor FDR ##########
+Quantitative Phenotype Gene-Based Analysis
+regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
+--ignore-pred --set-list set_file.txt --mask-def mask_file.txt --anno-file annotation_file.txt --vc-tests skato --bsize 1000 --extract variants_to_include.txt --write-mask-snplist \
+--minMAC 1 --check-burden-files --out output_prefix
+
+Quantitative Phenotype Gene-Based Analysis with Sample Exclusion
+regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
+--ignore-pred --set-list set_file.txt --mask-def mask_file.txt --anno-file annotation_file.txt --vc-tests skato --bsize 1000 --extract variants_to_include.txt \
+--remove samples_to_exclude.txt --write-mask-snplist --check-burden-files --out output_prefix
+
+#Description of Additional Parameters
+--approx	Uses approximate Firth correction for computational efficiency.
+--set-list	Defines genes or variant sets.
+--mask-def	Defines functional masks.
+--anno-file	Variant annotation file.
+--vc-tests skato	Performs SKAT-O gene-based testing.
+--extract	Restricts analysis to selected variants.
+--write-mask-snplist	Exports variants included in each mask.
+--minMAC 1	Includes variants with minor allele count ≥ 1.
+--check-burden-files	Verifies burden file consistency.
+
+###################################################################################################################################################################################
+
+6. Multiple Testing Correction for Rare Variant Analyses
+
+The following Python script was used to extract SKAT-O results and calculate FDR-adjusted p-values.
+
+---
+
 #!/usr/bin/env python3
 
 import sys
@@ -218,43 +205,54 @@ from pathlib import Path
 def process_regenie(file_path):
     file_path = Path(file_path)
 
-    # Leer archivo ignorando la primera línea (##MASKS)
+    # Read REGENIE file while ignoring header comments
     df = pd.read_csv(
         file_path,
         sep=r"\s+",
-        comment="#",   # ignora líneas que empiezan por ##
+        comment="#",
         engine="python"
     )
 
-    # Filtrar solo ADD-SKATO
+    # Keep only ADD-SKATO rows
     df = df[df["TEST"] == "ADD-SKATO"].copy()
 
     if df.empty:
-        print(f"[WARN] No hay filas ADD-SKATO en {file_path.name}")
+        print(f"[WARN] No ADD-SKATO rows found in {file_path.name}")
         return
 
-    # Calcular Pval a partir de LOG10P
+    # Calculate p-values from LOG10P
     df["Pval"] = 10 ** (-df["LOG10P"])
 
-    # Corrección FDR (Benjamini-Hochberg)
+    # FDR correction
     df["Pval_FDR"] = multipletests(
         df["Pval"],
         method="fdr_bh"
     )[1]
 
-    # Nombre del archivo de salida
+    # Output file
     out_file = file_path.with_suffix(".ADD_SKATO.filtered.tsv")
 
-    # Guardar
+    # Save filtered results
     df.to_csv(out_file, sep="\t", index=False)
 
-    print(f"[OK] Generado: {out_file.name}")
+    print(f"[OK] Generated: {out_file.name}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        sys.exit("Uso: procesar_regenie_skato.py archivo1.regenie [archivo2.regenie ...]")
+        sys.exit("Usage: process_regenie_skato.py file1.regenie [file2.regenie ...]")
 
     for f in sys.argv[1:]:
         process_regenie(f)
 
-########################################################################################################
+---
+
+###################################################################################################################################################################################
+
+#Notes
+
+All analyses were performed using PLINK binary genotype files.
+Common variant analyses were conducted at the single-variant level.
+Rare variant analyses were performed using gene-based aggregation tests.
+Covariates included age, sex, BMI, cohort, or additional study-specific variables depending on the phenotype analyzed.
+Quantitative trait analyses excluding treated individuals were performed to minimize treatment-related confounding.
+False Discovery Rate correction was applied using the Benjamini-Hochberg method.
