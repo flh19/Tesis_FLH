@@ -36,7 +36,10 @@ pip install pandas numpy statsmodels
 1. Conversion from VCF to PLINK Binary Format
 
 # VCF genotype files were converted into PLINK binary format (.bed, .bim, .fam) using the following command:
-plink --vcf input.vcf.gz --double-id --make-bed --out output_prefix
+plink --vcf input.vcf.gz \
+   --double-id \
+   --make-bed \
+   --out output_prefix
 
 # Description of Parameters:
 --vcf	Input compressed VCF file.
@@ -54,7 +57,9 @@ output_prefix.fam
 2. Allele Frequency Calculation
 
 Allele frequencies were calculated from PLINK binary files using:
-plink --bfile input_prefix --freq --out output_prefix
+plink --bfile input_prefix \
+      --freq \
+      --out output_prefix
 
 #Description of Parameters:
 --bfile	Prefix of PLINK binary input files.
@@ -70,17 +75,49 @@ output_prefix.frq
 
 Single-variant association analyses were performed using REGENIE Step 2.
 
-#Binary Phenotype Analysis (Logistic Regression). Used for dichotomous traits such as disease status. 
-regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol phenotype --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --bt --firth \
---ignore-pred --bsize 1000 --htp phenotype --out output_prefix
+3.1 Binary Phenotype Analysis (Logistic Regression). Used for dichotomous traits such as disease status. 
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol phenotype \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --bt \
+  --firth \
+  --ignore-pred \
+  --bsize 1000 \
+  --htp phenotype \
+  --out output_prefix
 
-#Quantitative Phenotype Analysis (Linear Regression). Used for continuous quantitative traits.
-regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2 --qt \
---ignore-pred --bsize 1000 --htp quantitative_trait --out output_prefix
+3.2 Quantitative Phenotype Analysis (Linear Regression). Used for continuous quantitative traits.
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2 \
+  --qt \
+  --ignore-pred \
+  --bsize 1000 \
+  --htp quantitative_trait \
+  --out output_prefix
 
-#Quantitative Phenotype Analysis with Sample Exclusion (Linear Regression). Used when treated individuals or specific samples needed to be excluded.
-regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
---ignore-pred --remove samples_to_exclude.txt --bsize 1000 --htp quantitative_trait --out output_prefix
+3.3 Quantitative Phenotype Analysis with Sample Exclusion (Linear Regression). Used when treated individuals or specific samples needed to be excluded.
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --qt \
+  --ignore-pred \
+  --remove samples_to_exclude.txt \
+  --bsize 1000 \
+  --htp quantitative_trait \
+  --out output_prefix
 
 Description of Parameters
 --step 2	Performs REGENIE Step 2 association testing.
@@ -160,20 +197,70 @@ process_files('*.regenie')
 
 Rare variant association analyses were performed using REGENIE gene-based tests with the SKAT-O framework.
 
-Binary Phenotype Gene-Based Analysis
-regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol binary_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3,covariate4 \
---bt --firth --approx --ignore-pred --set-list set_file.txt --mask-def mask_file.txt --anno-file annotation_file.txt --vc-tests skato --bsize 1000 --extract variants_to_include.txt \
---write-mask-snplist --minMAC 1 --check-burden-files --out output_prefix
+5.1 Binary Phenotype Gene-Based Analysis
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol binary_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,covariate4 \
+  --bt \
+  --firth \
+  --approx \
+  --ignore-pred \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --extract variants_to_include.txt \
+  --write-mask-snplist \
+  --minMAC 1 \
+  --check-burden-files \
+  --out output_prefix
 
-Quantitative Phenotype Gene-Based Analysis
-regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
---ignore-pred --set-list set_file.txt --mask-def mask_file.txt --anno-file annotation_file.txt --vc-tests skato --bsize 1000 --extract variants_to_include.txt --write-mask-snplist \
---minMAC 1 --check-burden-files --out output_prefix
+5.2 Quantitative Phenotype Gene-Based Analysis
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --qt \
+  --ignore-pred \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --extract variants_to_include.txt \
+  --write-mask-snplist \
+  --minMAC 1 \
+  --check-burden-files \
+  --out output_prefix
 
-Quantitative Phenotype Gene-Based Analysis with Sample Exclusion
-regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
---ignore-pred --set-list set_file.txt --mask-def mask_file.txt --anno-file annotation_file.txt --vc-tests skato --bsize 1000 --extract variants_to_include.txt \
---remove samples_to_exclude.txt --write-mask-snplist --check-burden-files --out output_prefix
+5.3 Quantitative Phenotype Gene-Based Analysis with Sample Exclusion
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --qt \
+  --ignore-pred \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --extract variants_to_include.txt \
+  --remove samples_to_exclude.txt \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
 
 #Description of Additional Parameters
 --approx	Uses approximate Firth correction for computational efficiency.
