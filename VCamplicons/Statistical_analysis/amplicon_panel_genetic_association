@@ -1,4 +1,4 @@
-# Rare and Common Variant Association Analysis Pipeline
+##### Rare and Common Variant Association Analysis Pipeline
 
 ## Overview
 
@@ -35,16 +35,16 @@ pip install pandas numpy statsmodels
 
 1. Conversion from VCF to PLINK Binary Format
 
-#VCF genotype files were converted into PLINK binary format (.bed, .bim, .fam) using the following command:
+# VCF genotype files were converted into PLINK binary format (.bed, .bim, .fam) using the following command:
 plink --vcf input.vcf.gz --double-id --make-bed --out output_prefix
 
-#Description of Parameters:
+# Description of Parameters:
 --vcf	Input compressed VCF file.
 --double-id	Uses sample IDs as both family and individual IDs.
 --make-bed	Generates PLINK binary files.
 --out	Prefix for output files.
 
-#Output Files:
+# Output Files:
 output_prefix.bed
 output_prefix.bim
 output_prefix.fam
@@ -70,15 +70,15 @@ output_prefix.frq
 
 Single-variant association analyses were performed using REGENIE Step 2.
 
-#Binary Phenotype Analysis. Used for dichotomous traits such as disease status.
+#Binary Phenotype Analysis (Logistic Regression). Used for dichotomous traits such as disease status. 
 regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol phenotype --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --bt --firth \
 --ignore-pred --bsize 1000 --htp phenotype --out output_prefix
 
-#Quantitative Phenotype Analysis. Used for continuous quantitative traits.
+#Quantitative Phenotype Analysis (Linear Regression). Used for continuous quantitative traits.
 regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2 --qt \
 --ignore-pred --bsize 1000 --htp quantitative_trait --out output_prefix
 
-#Quantitative Phenotype Analysis with Sample Exclusion. Used when treated individuals or specific samples needed to be excluded.
+#Quantitative Phenotype Analysis with Sample Exclusion (Linear Regression). Used when treated individuals or specific samples needed to be excluded.
 regenie --step 2 --bed input_prefix --phenoFile phenotype_file.txt --phenoCol quantitative_trait --covarFile covariates_file.txt --covarCol covariate1,covariate2,covariate3 --qt \
 --ignore-pred --remove samples_to_exclude.txt --bsize 1000 --htp quantitative_trait --out output_prefix
 
@@ -251,8 +251,8 @@ if __name__ == "__main__":
 #Notes
 
 All analyses were performed using PLINK binary genotype files.
-Common variant analyses were conducted at the single-variant level.
-Rare variant analyses were performed using gene-based aggregation tests.
+Analyses of common variants were carried out at the individual variant level using logistic and linear regression models, depending on whether the phenotype was dichotomous or quantitative, respectively. 
+Rare variant analyses were performed using gene-based aggregation tests (SKAT-O).
 Covariates included age, sex, BMI, cohort, or additional study-specific variables depending on the phenotype analyzed.
 Quantitative trait analyses excluding treated individuals were performed to minimize treatment-related confounding.
 False Discovery Rate correction was applied using the Benjamini-Hochberg method.
