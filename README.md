@@ -1,2 +1,2 @@
-# thesis-plots
-Code for the thesis plots
+# thesis-code
+Code for thesis analyses and plots
