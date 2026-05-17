@@ -1,0 +1,260 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+plink --vcf input.vcf.gz --double-id --make-bed --out output_prefix
+
+plink --bfile input_prefix --freq --out output_prefix
+
+#Variantes comunes - modelo aditivo
+#Dicotómicas
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol phenotype \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --bt \
+  --firth \
+  --ignore-pred \
+  --bsize 1000 \
+  --htp phenotype \
+  --out output_prefix
+
+  #Cuantitativas sin exclusión de muestras por tratamiento
+  regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2 \
+  --qt \
+  --ignore-pred \
+  --bsize 1000 \
+  --htp quantitative_trait \
+  --out output_prefix
+
+  #Cuantitativas sin exclusión de muestras por tratamiento
+  regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --qt \
+  --ignore-pred \
+  --remove samples_to_exclude.txt \
+  --bsize 1000 \
+  --htp quantitative_trait \
+  --out output_prefix
+
+############# Script para corregir los archivos de regenie (variantes comunes) y obtener el valor FDR #############
+import pandas as pd
+import glob
+from statsmodels.stats.multitest import multipletests
+
+# Función para corregir p-valores por Bonferroni y FDR
+def correct_pvalues(df):
+    p_values = df['Pval'].values  # Extrae los p-valores de la columna 'Pval'
+    
+    # Corregir por Bonferroni
+    bonferroni_threshold = 0.05 / len(p_values)  # Umbral Bonferroni
+    bonferroni_pvalues = multipletests(p_values, method='bonferroni')[1]
+    
+    # Corregir por FDR (Benjamini-Hochberg)
+    fdr_pvalues = multipletests(p_values, method='fdr_bh')[1]
+    
+    # Añadir los resultados al DataFrame
+    df['Bonferroni_Pval'] = bonferroni_pvalues
+    df['FDR_Pval'] = fdr_pvalues
+    
+    return df, bonferroni_threshold
+
+# Función para procesar archivos y calcular p-valores corregidos
+def process_files(file_pattern):
+    files = glob.glob(file_pattern)
+    
+    for file in files:
+        print(f"Procesando archivo: {file}")
+        
+        # Leer el archivo
+        df = pd.read_csv(file, sep="\t")
+        
+        # Corregir p-valores y obtener umbral Bonferroni
+        df_corrected, bonferroni_threshold = correct_pvalues(df)
+        
+        # Mostrar umbral Bonferroni
+        print(f"Umbral Bonferroni para este archivo: {bonferroni_threshold}")
+        
+        # Mostrar algunas filas del DataFrame corregido para validar
+        print(df_corrected[['Name', 'Pval', 'Bonferroni_Pval', 'FDR_Pval']].head())
+
+        # Guardar el archivo con los p-valores corregidos
+        output_file = file.replace(".regenie", "_corrected.regenie")
+        df_corrected.to_csv(output_file, sep="\t", index=False)
+        print(f"Archivo corregido guardado en: {output_file}\n")
+
+# Llamar a la función con el patrón de archivo
+process_files('*.regenie')
+
+##########################################################################################################################
+
+#Variantes raras
+#Fenotipos dicotómicos
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol binary_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3,covariate4 \
+  --bt \
+  --firth \
+  --approx \
+  --ignore-pred \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --extract variants_to_include.txt \
+  --write-mask-snplist \
+  --minMAC 1 \
+  --check-burden-files \
+  --out output_prefix
+
+#Fenotipos cuantitativos sin exclusión de tratamiento
+regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --qt \
+  --ignore-pred \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --extract variants_to_include.txt \
+  --write-mask-snplist \
+  --minMAC 1 \
+  --check-burden-files \
+  --out output_prefix
+
+  #Fenotipos cuantitativos con exclusión de muestras por tratamiento
+  regenie \
+  --step 2 \
+  --bed input_prefix \
+  --phenoFile phenotype_file.txt \
+  --phenoCol quantitative_trait \
+  --covarFile covariates_file.txt \
+  --covarCol covariate1,covariate2,covariate3 \
+  --qt \
+  --ignore-pred \
+  --set-list set_file.txt \
+  --mask-def mask_file.txt \
+  --anno-file annotation_file.txt \
+  --vc-tests skato \
+  --bsize 1000 \
+  --extract variants_to_include.txt \
+  --remove samples_to_exclude.txt \
+  --write-mask-snplist \
+  --check-burden-files \
+  --out output_prefix
+
+
+########## Script para corregir los archivos de regenie (variantes raras) y obtener el valor FDR ##########
+#!/usr/bin/env python3
+
+import sys
+import pandas as pd
+import numpy as np
+from statsmodels.stats.multitest import multipletests
+from pathlib import Path
+
+def process_regenie(file_path):
+    file_path = Path(file_path)
+
+    # Leer archivo ignorando la primera línea (##MASKS)
+    df = pd.read_csv(
+        file_path,
+        sep=r"\s+",
+        comment="#",   # ignora líneas que empiezan por ##
+        engine="python"
+    )
+
+    # Filtrar solo ADD-SKATO
+    df = df[df["TEST"] == "ADD-SKATO"].copy()
+
+    if df.empty:
+        print(f"[WARN] No hay filas ADD-SKATO en {file_path.name}")
+        return
+
+    # Calcular Pval a partir de LOG10P
+    df["Pval"] = 10 ** (-df["LOG10P"])
+
+    # Corrección FDR (Benjamini-Hochberg)
+    df["Pval_FDR"] = multipletests(
+        df["Pval"],
+        method="fdr_bh"
+    )[1]
+
+    # Nombre del archivo de salida
+    out_file = file_path.with_suffix(".ADD_SKATO.filtered.tsv")
+
+    # Guardar
+    df.to_csv(out_file, sep="\t", index=False)
+
+    print(f"[OK] Generado: {out_file.name}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        sys.exit("Uso: procesar_regenie_skato.py archivo1.regenie [archivo2.regenie ...]")
+
+    for f in sys.argv[1:]:
+        process_regenie(f)
+
+########################################################################################################
